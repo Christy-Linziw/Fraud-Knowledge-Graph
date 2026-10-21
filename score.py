@@ -1,34 +1,28 @@
+# score.py
 def calc_risk(text):
-    # 加载词典
-    with open("特征词典_v1_利益诱惑.txt","r",encoding="utf-8") as f:
-        benefit_words = f.read().splitlines()
-    with open("特征词典_v1_紧急压力.txt","r",encoding="utf-8") as f:
-        rush_words = f.read().splitlines()
-    with open("特征词典_v1_诱导操作.txt","r",encoding="utf-8") as f:
-        operate_words = f.read().splitlines()
+    # 利益诱惑词
+    reward_words = ["中奖", "大奖", "打款", "返利", "佣金", "高额回报", "红包", "福利", "免费领取"]
+    # 紧急压力词
+    urgent_words = ["马上", "立刻", "限时", "冻结", "通缉", "抓捕", "后果自负", "过期失效"]
+    # 诱导操作词
+    action_words = ["提供身份证", "提供密码", "银行卡号", "转账", "扫码", "点击链接"]
 
-    # 统计命中词
-    hit_benefit = [w for w in benefit_words if w in text]
-    hit_rush = [w for w in rush_words if w in text]
-    hit_operate = [w for w in operate_words if w in text]
+    text = text.lower()
+    hit_reward = [w for w in reward_words if w in text]
+    hit_urgent = [w for w in urgent_words if w in text]
+    hit_action = [w for w in action_words if w in text]
 
-    total_score = len(hit_benefit) + len(hit_rush) + len(hit_operate)
-
-    # 判断风险等级
-    if total_score >=3:
-        risk_level = "高风险"
-    elif total_score >0:
-        risk_level = "中风险"
+    score = len(hit_reward)*3 + len(hit_urgent)*4 + len(hit_action)*5
+    if score >= 15:
+        level = "高风险"
+    elif score >= 6:
+        level = "中风险"
     else:
-        risk_level = "低风险"
-
-    result = {
-        "total_score": total_score,
-        "risk_level": risk_level,
-        "feature":{
-            "利益诱惑关键词":hit_benefit,
-            "紧急压力关键词":hit_rush,
-            "诱导操作关键词":hit_operate
-        }
+        level = "低风险"
+    return {
+        "score": score,
+        "level": level,
+        "利益诱惑关键词": hit_reward,
+        "紧急压力关键词": hit_urgent,
+        "诱导操作关键词": hit_action
     }
-    return result
