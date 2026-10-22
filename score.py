@@ -97,15 +97,16 @@ def predict_fraud_type(case_messages: list[str]):
     candidate_all = raw_identity_hit + raw_purpose_hit
     final_type = "待定"
 
-    if has_claim_identity(case_messages):
-        if len(raw_identity_hit) > 0:
-            final_type = conflict_resolve(raw_identity_hit, full_text)
-    else:
-        hit_purpose = raw_purpose_hit.copy()
-        if "刷单返利" in hit_purpose and not has_rebate_closed_loop(full_text):
-            hit_purpose.remove("刷单返利")
-        if len(hit_purpose) > 0:
-            final_type = hit_purpose[0]
+    hit_all = raw_identity_hit + raw_purpose_hit
+    if len(hit_all) > 0:
+        final_type = conflict_resolve(hit_all, full_text)
+
+    if "刷单返利" in hit_all and not has_rebate_closed_loop(full_text):
+        hit_all.remove("刷单返利")
+        if len(hit_all) > 0:
+            final_type = conflict_resolve(hit_all, full_text)
+        else:
+            final_type = "待定"
 
     return {
         "final_type": final_type,
