@@ -84,22 +84,35 @@ def conflict_resolve(hit_list, text):
 
 def predict_fraud_type(case_messages: list[str]):
     full_text = "\n".join(case_messages)
-    if has_claim_identity(case_messages):
-        hit_list = []
-        for name, kwds in identity_type.items():
-            if any(k in full_text for k in kwds):
-                hit_list.append(name)
-        if len(hit_list) > 0:
-            return conflict_resolve(hit_list, full_text)
-    hit_purpose = []
+    raw_identity_hit = []
+    raw_purpose_hit = []
+
+    for name, kwds in identity_type.items():
+        if any(k in full_text for k in kwds):
+            raw_identity_hit.append(name)
     for name, kwds in purpose_type.items():
         if any(k in full_text for k in kwds):
-            hit_purpose.append(name)
-    if "刷单返利" in hit_purpose and not has_rebate_closed_loop(full_text):
-        hit_purpose.remove("刷单返利")
-    if len(hit_purpose) > 0:
-        return hit_purpose[0]
-    return "待定"
+            raw_purpose_hit.append(name)
+
+    candidate_all = raw_identity_hit + raw_purpose_hit
+    final_type = "待定"
+
+    if has_claim_identity(case_messages):
+        if len(raw_identity_hit) > 0:
+            final_type = conflict_resolve(raw_identity_hit, full_text)
+    else:
+        hit_purpose = raw_purpose_hit.copy()
+        if "刷单返利" in hit_purpose and not has_rebate_closed_loop(full_text):
+            hit_purpose.remove("刷单返利")
+        if len(hit_purpose) > 0:
+            final_type = hit_purpose[0]
+
+    return {
+        "final_type": final_type,
+        "candidate_list": candidate_all,
+        "raw_identity_hit": raw_identity_hit,
+        "raw_purpose_hit": raw_purpose_hit
+    }
 
 
 def predict_step(msg: str) -> int:
@@ -162,7 +175,10 @@ def predict_difficulty(case_messages, trigger_res):
 def calc_total_score(case_messages: list[str]):
     full_text = "\n".join(case_messages)
     trigger = calc_trigger(full_text)
-    fraud_type = predict_fraud_type(case_messages)
+    type_out = predict_fraud_type(case_messages)
+    fraud_type = type_out["final_type"]
+    candidate_list = type_out["candidate_list"]
+
     base_score = sum([trigger["紧急压力"], trigger["利益诱惑"], trigger["诱导操作"]]) * 30
     difficulty = predict_difficulty(case_messages, trigger)
     if difficulty == "易":
@@ -171,9 +187,11 @@ def calc_total_score(case_messages: list[str]):
         base_score += 5
     if fraud_type == "待定":
         base_score = base_score * 0.6
+
     return {
         "total_score": base_score,
         "fraud_type": fraud_type,
+        "candidate_list": candidate_list,
         "trigger": trigger,
         "difficulty": difficulty
     }
