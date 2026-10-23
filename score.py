@@ -15,7 +15,6 @@ lex_urgent = load_lexicon("特征词典_v1_紧急压力.txt")
 lex_profit = load_lexicon("特征词典_v1_利益诱惑.txt")
 lex_operate = load_lexicon("特征词典_v1_诱导操作.txt")
 
-
 identity_type = {
     "冒充公检法": ["公安", "检察院", "法院", "警官", "民警", "洗钱", "通缉", "拘捕", "涉案", "安全账户"],
     "ETC认证": ["ETC", "高速", "通行", "OBU"],
@@ -46,6 +45,7 @@ step_keyword = {
     "step5加码索取": ["卡单", "再补", "保证金", "解冻", "信誉分不足"],
     "step6收尾断联": ["不要再联系", "不要报警"]
 }
+
 step4_narrate_black = ["被骗", "我转了", "已经转了", "当初转账"]
 
 
@@ -64,6 +64,12 @@ def has_rebate_closed_loop(text: str) -> bool:
     cond3 = any(k in text for k in ["提现", "到账"])
     hit = sum([cond1, cond2, cond3])
     return hit >= 2
+
+
+def has_money_demand(text: str) -> bool:
+    """是否存在资金/验证码索取，用于过滤正常通知"""
+    money_keys = ["转账", "汇款", "垫付", "保证金", "验证码", "提供卡号", "打钱"]
+    return any(k in text for k in money_keys)
 
 
 def conflict_resolve(hit_list, text):
@@ -86,7 +92,6 @@ def predict_fraud_type(case_messages: list[str]):
     full_text = "\n".join(case_messages)
     raw_identity_hit = []
     raw_purpose_hit = []
-
     for name, kwds in identity_type.items():
         if any(k in full_text for k in kwds):
             raw_identity_hit.append(name)
@@ -94,19 +99,45 @@ def predict_fraud_type(case_messages: list[str]):
         if any(k in full_text for k in kwds):
             raw_purpose_hit.append(name)
 
+    # ==========【误报修复规则开始】==========
+    # 规则1：冒充银行命中，但只是账单/余额/到期/登录提醒，无资金索取，删除冒充银行
+    if "冒充银行" in raw_identity_hit:
+        bank_normal_sig = any(s in full_text for s in ["消费", "余额", "转入", "账单", "到期", "制卡完成"])
+        if bank_normal_sig and not has_money_demand(full_text):
+            raw_identity_hit.remove("冒充银行")
+
+    # 规则2：冒充熟人：仅换号/手机丢了，没有要钱，删除冒充熟人（修复N028）
+    if "冒充熟人" in raw_identity_hit:
+        friend_no_money = not any(s in full_text for s in ["借", "转我", "帮忙付"])
+        if friend_no_money:
+            raw_identity_hit.remove("冒充熟人")
+
+    # 规则3：兼职引流：只有招聘，无押金垫资，删除兼职引流（修复N011）
+    if "兼职引流" in raw_purpose_hit:
+        no_bad_sig = not any(s in full_text for s in ["押金", "垫资", "交会费"])
+        if no_bad_sig:
+            raw_purpose_hit.remove("兼职引流")
+
+    # 规则4：刷单返利增强过滤
+    if "刷单返利" in raw_purpose_hit:
+        # 聚餐垫付、平台余额返现不属于刷单
+        is_dinner_advance = any(x in full_text for x in ["聚餐", "饭钱"])
+        is_platform_return = "返现" in full_text and "余额" in full_text and "垫付" not in full_text
+        if is_dinner_advance or is_platform_return or (not has_rebate_closed_loop(full_text)):
+            raw_purpose_hit.remove("刷单返利")
+
+    # 规则5：冒充客服退款：只有“退款原路返回”无索要账号，移除命中（修复N023）
+    if "冒充客服退款" in raw_identity_hit:
+        safe_refund = "原路返回" in full_text and not has_money_demand(full_text)
+        if safe_refund:
+            raw_identity_hit.remove("冒充客服退款")
+    # ==========【误报修复规则结束】==========
+
     candidate_all = raw_identity_hit + raw_purpose_hit
     final_type = "待定"
-
     hit_all = raw_identity_hit + raw_purpose_hit
     if len(hit_all) > 0:
         final_type = conflict_resolve(hit_all, full_text)
-
-    if "刷单返利" in hit_all and not has_rebate_closed_loop(full_text):
-        hit_all.remove("刷单返利")
-        if len(hit_all) > 0:
-            final_type = conflict_resolve(hit_all, full_text)
-        else:
-            final_type = "待定"
 
     return {
         "final_type": final_type,
@@ -179,7 +210,6 @@ def calc_total_score(case_messages: list[str]):
     type_out = predict_fraud_type(case_messages)
     fraud_type = type_out["final_type"]
     candidate_list = type_out["candidate_list"]
-
     base_score = sum([trigger["紧急压力"], trigger["利益诱惑"], trigger["诱导操作"]]) * 30
     difficulty = predict_difficulty(case_messages, trigger)
     if difficulty == "易":
@@ -188,7 +218,6 @@ def calc_total_score(case_messages: list[str]):
         base_score += 5
     if fraud_type == "待定":
         base_score = base_score * 0.6
-
     return {
         "total_score": base_score,
         "fraud_type": fraud_type,
