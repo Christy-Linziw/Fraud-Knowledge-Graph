@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from score import calc_total_score, identity
+from score import calc_total_score
 from explain import detect_techniques
 
 def calc_metrics(y_true, y_pred):
