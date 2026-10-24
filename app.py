@@ -3,7 +3,6 @@ import pandas as pd
 from score import calc_total_score, identity
 from explain import detect_techniques
 
-# ===================== 原生指标计算（无sklearn）=====================
 def calc_metrics(y_true, y_pred):
     tp = 0
     tn = 0
@@ -36,12 +35,10 @@ def calc_metrics(y_true, y_pred):
         "cm": cm
     }
 
-# ===================== 页面配置 =====================
 st.set_page_config(page_title="诈识图谱 v2 检测", layout="wide")
 st.title("诈识图谱 — 诈骗文本风险检测")
 tab1, tab2 = st.tabs(["单条检测", "批量评测（内部评估）"])
 
-# ===================== Tab1 单条检测 =====================
 with tab1:
     st.subheader("输入待检测文本")
     user_text = st.text_area("粘贴短信/聊天话术：", height=200)
@@ -64,7 +61,6 @@ with tab1:
             for t in tech_list:
                 st.markdown(f"- {t}")
 
-# ===================== Tab2 批量评测 =====================
 with tab2:
     st.info("⚠️ 本页面仅用于内部模型评估，上传的表格需要包含两列：case_text, true_is_fraud（0/1）")
     upload_file = st.file_uploader("上传Excel数据集", type=["xlsx"])
@@ -92,7 +88,6 @@ with tab2:
                     hit_list.append(str(hit_words))
                     progress_bar.progress((idx + 1) / len(df))
 
-                # 计算指标
                 metric_res = calc_metrics(y_true, y_pred)
                 st.subheader("评估指标汇总")
                 st.write(f"TP:{metric_res['tp']}, TN:{metric_res['tn']}, FP:{metric_res['fp']}, FN:{metric_res['fn']}")
@@ -101,7 +96,6 @@ with tab2:
                 st.write(f"F1分数：{metric_res['f1']:.3f}")
                 st.write(f"准确率 Accuracy：{metric_res['accuracy']:.3f}")
 
-                # 混淆矩阵表格
                 st.subheader("混淆矩阵")
                 cm = metric_res["cm"]
                 st.markdown(f"""
@@ -111,7 +105,6 @@ with tab2:
                 |1(诈骗)| {cm[1][0]} | {cm[1][1]} |
                 """)
 
-                # 输出结果表
                 out_df = df.copy()
                 out_df["pred_is_fraud"] = y_pred
                 out_df["risk_score"] = score_list
@@ -119,5 +112,5 @@ with tab2:
                 out_df["hit_keywords"] = hit_list
                 st.dataframe(out_df)
 
-                # 下载
-                csv_data = out_df.to_csv(index=False, enc
+                csv_data = out_df.to_csv(index=False, encoding="utf-8-sig")
+                st.download_button("下载预测结果表", data=csv_data, file_name="model_predict_result.csv", mime="text/csv")
